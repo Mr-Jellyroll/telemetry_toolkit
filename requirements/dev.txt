@@ -1,0 +1,6 @@
+-r base.txt         # Include all base requirements
+pytest>=6.0         # Writing and running tests
+pytest-cov>=2.0     # Measuring test coverage
+black>=22.0         # Formatting
+isort>=5.0         # Import sorting
+mypy>=0.940        # Type checking
