@@ -10,12 +10,12 @@ async def main():
         initial_speed=0.0
     )
     
-    # Start the simulation in the background
+    # Start the sim in the background
     simulation_task = asyncio.create_task(simulator.start_simulation())
     
     try:
-        # Simulate a simple flight pattern
-        await asyncio.sleep(2)  # Wait 2 seconds at initial position
+        # Simulate simple flight pattern
+        await asyncio.sleep(2)  # Wait 2 sec
         
         # Command the vehicle to climb to 500 meters
         print("Climbing to 500 meters...")
@@ -27,8 +27,8 @@ async def main():
         simulator.set_target_speed(30.0)
         await asyncio.sleep(5)
         
-        # Turn to a new heading
-        print("Turning to heading 45 degrees...")
+        # Turn to a new position
+        print("Turning to 45 degrees...")
         simulator.set_heading(45.0)
         await asyncio.sleep(5)
         
@@ -47,7 +47,7 @@ async def main():
         simulator.stop_simulation()
         await simulation_task
         
-        # Print the final buffer of data points
+        # Print the final data points
         print("\nFinal telemetry data:")
         for data_point in simulator.data_buffer[-5:]:  # Last 5 points
             print(f"Time: {data_point.timestamp}")
