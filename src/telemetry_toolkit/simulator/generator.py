@@ -168,6 +168,8 @@ class TelemetrySimulator:
             altitude=self._add_noise(self.current_state['altitude']),
             speed=self._add_noise(self.current_state['speed']),
             battery_level=self.current_state['battery_level'],
+            latitude=self.current_state['latitude'],
+            longitude=self.current_state['longitude'],
             sensor_readings=self._generate_sensor_readings()
         )
         

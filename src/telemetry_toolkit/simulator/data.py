@@ -17,6 +17,8 @@ class TelemetryData:
     altitude: float
     speed: float
     battery_level: float
+    latitude: float
+    longitude: float
     sensor_readings: Dict[str, float]
     
     def validate(self) -> bool:
