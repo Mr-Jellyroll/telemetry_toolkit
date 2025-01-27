@@ -3,6 +3,8 @@ import asyncio
 import numpy as np
 from telemetry_toolkit.simulator.generator import TelemetrySimulator
 
+pytestmark = pytest.mark.asyncio
+
 async def test_initial_state(simulator):
     """
     Tests sim initializes with the correct starting values.
@@ -39,7 +41,7 @@ async def test_altitude_changes(simulator):
     target_altitude = 500.0
     simulator.set_target_altitude(target_altitude)
     
-    # Generate several data points
+    # Generate data points
     initial_altitude = simulator.current_state['altitude']
     data_points = []
     for _ in range(10):
@@ -47,7 +49,7 @@ async def test_altitude_changes(simulator):
         data_points.append(data.altitude)
         await asyncio.sleep(0.1)
     
-    # Verify altitude behavior
+    # Verify altitude
     assert data_points[-1] > initial_altitude  # Should be climbing
     assert all(0 <= alt <= target_altitude for alt in data_points)  # Within bounds
     assert all(abs(data_points[i] - data_points[i-1]) <= 10.0 
@@ -55,7 +57,7 @@ async def test_altitude_changes(simulator):
 
 async def test_battery_drain(running_simulator):
     """
-    Tests battery drains realistically based on activity.
+    Tests battery drains.
     """
     # Get initial battery level
     initial_battery = running_simulator.current_state['battery_level']
@@ -64,12 +66,11 @@ async def test_battery_drain(running_simulator):
     running_simulator.set_target_altitude(500.0)  # Climbing should drain more battery
     running_simulator.set_target_speed(30.0)      # Moving should drain battery
     
-    await asyncio.sleep(1.0)  # Let the simulator run
+    await asyncio.sleep(1.0)
     
     # Get final battery level
     final_battery = running_simulator.current_state['battery_level']
     
-    # Verify battery behavior
     assert final_battery < initial_battery  # Battery should drain
     assert final_battery >= 0  # Battery shouldn't go negative
 
@@ -83,12 +84,12 @@ async def test_sensor_correlations(simulator):
     ground_pressure = ground_data.sensor_readings['pressure']
     
     # Move to high altitude
-    simulator.current_state['altitude'] = 5000.0  # 5km up
+    simulator.current_state['altitude'] = 5000.0
     high_data = await simulator.generate_data()
     high_temp = high_data.sensor_readings['temperature']
     high_pressure = high_data.sensor_readings['pressure']
     
-    # Verify physical relationships
+
     assert high_temp < ground_temp  # Temperature should decrease with altitude
     assert high_pressure < ground_pressure  # Pressure should decrease with altitude
 
@@ -96,7 +97,7 @@ async def test_movement_physics(simulator):
     """
     Tests that the simulator respects basic physics.
     """
-    # Set a target speed
+
     target_speed = 50.0
     simulator.set_target_speed(target_speed)
     
