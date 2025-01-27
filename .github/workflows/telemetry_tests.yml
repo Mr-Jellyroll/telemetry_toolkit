@@ -5,7 +5,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  # Allow manual triggering of the workflow
+  # manual triggering
   workflow_dispatch:
 
 jobs:
@@ -14,10 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     
     - name: Set up Python 3.11
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
     
@@ -41,17 +41,18 @@ jobs:
       if: always()
     
     - name: Upload test results
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: test-results
         path: |
           test-results/
           htmlcov/
           test_report.html
+        retention-days: 5
       if: always()
     
     - name: Post test summary comment
-      uses: actions/github-script@v5
+      uses: actions/github-script@v7
       if: github.event_name == 'pull_request'
       with:
         script: |
