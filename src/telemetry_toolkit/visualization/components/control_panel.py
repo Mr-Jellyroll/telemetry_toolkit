@@ -35,6 +35,25 @@ class VehicleControlPanel:
                 ),
             ], className="mb-4"),
             
+            # Heading Control
+            html.Div([
+                html.Label("Heading (degrees)"),
+                dcc.Slider(
+                    id=f"{self.id_prefix}-heading",
+                    min=0,
+                    max=359,
+                    step=5,
+                    value=0,
+                    marks={
+                        0: 'N',
+                        90: 'E',
+                        180: 'S',
+                        270: 'W',
+                        360: 'N'
+                    },
+                ),
+            ], className="mb-4"),
+            
             # Quick Action Buttons
             html.Div([
                 dbc.Button(
@@ -56,5 +75,3 @@ class VehicleControlPanel:
                 )
             ], className="d-grid gap-2")
         ], className="p-4 border rounded")
-
-__all__ = ['VehicleControlPanel']

@@ -8,7 +8,7 @@ from dash.exceptions import PreventUpdate
 from plotly.subplots import make_subplots
 import dash_bootstrap_components as dbc
 import asyncio
-import threading
+import numpy as np
 from .components.control_panel import VehicleControlPanel
 from ..simulator.control import ControlCommand
 
@@ -48,11 +48,16 @@ class TelemetryDashboard:
                 # Second row: Performance metrics and map
                 html.Div([
                     html.Div([
-                        dcc.Graph(id='performance-metrics')
+                        dcc.Graph(id='telemetry-plot', className='mb-4'),
                     ], className='col-md-6'),
                     html.Div([
-                        dcc.Graph(id='position-map')
+                        dcc.Graph(id='position-map', className='mb-4'),
                     ], className='col-md-6')
+                ], className='row'),
+
+                # Status Display
+                html.Div([
+                    html.Div(id='status-display', className='text-center p-3 bg-light')
                 ], className='row mb-4'),
                 
                 # Hidden div for storing state
@@ -71,53 +76,76 @@ class TelemetryDashboard:
         """Set up all the dashboard callbacks."""
         
         @self.app.callback(
-            Output('control-state', 'children'),
+            [Output('control-state', 'children'),
+             Output('status-display', 'children')],
             [Input('vehicle-control-altitude', 'value'),
              Input('vehicle-control-speed', 'value'),
+             Input('vehicle-control-heading', 'value'),
              Input('vehicle-control-takeoff', 'n_clicks'),
              Input('vehicle-control-land', 'n_clicks'),
              Input('vehicle-control-emergency', 'n_clicks')],
             [State('control-state', 'children')]
         )
-        def handle_control_inputs(altitude, speed, takeoff_clicks, land_clicks, emergency_clicks, current_state):
+        def handle_control_inputs(altitude, speed, heading, takeoff_clicks, 
+                                land_clicks, emergency_clicks, current_state):
             """Handle control panel inputs."""
             if not ctx.triggered:
                 raise PreventUpdate
                 
             trigger_id = ctx.triggered_id
+            status_message = "Ready"
             
             try:
                 if trigger_id == 'vehicle-control-emergency':
-                    command = ControlCommand(emergency_stop=True)
-                    # Handle emergency directly through simulator
                     self.simulator.set_target_speed(0.0)
                     self.simulator.set_target_altitude(0.0)
+                    status_message = "EMERGENCY STOP ACTIVATED"
                     
                 elif trigger_id == 'vehicle-control-takeoff':
-                    # Handle takeoff directly through simulator
                     self.simulator.set_target_altitude(300.0)
                     self.simulator.set_target_speed(20.0)
+                    status_message = "Executing takeoff sequence"
                     
                 elif trigger_id == 'vehicle-control-land':
-                    # Handle landing directly through simulator
                     self.simulator.set_target_speed(5.0)
                     self.simulator.set_target_altitude(0.0)
+                    status_message = "Executing landing sequence"
                     
                 else:
                     # Handle slider updates
                     if altitude is not None:
                         self.simulator.set_target_altitude(float(altitude))
+                        status_message = f"Adjusting altitude to {altitude}m"
+                        
                     if speed is not None:
                         self.simulator.set_target_speed(float(speed))
+                        status_message = f"Adjusting speed to {speed}m/s"
+                        
+                    if heading is not None:
+                        self.simulator.set_heading(float(heading))
+                        # Convert heading to cardinal direction
+                        cardinal = self._heading_to_cardinal(heading)
+                        status_message = f"Turning to heading {heading}° ({cardinal})"
                     
             except Exception as e:
                 print(f"Error handling control input: {e}")
+                status_message = f"Error: {str(e)}"
             
-            return "updated"
+            status_html = html.Div([
+                html.H4("Vehicle Status"),
+                html.P(status_message),
+                html.Div([
+                    html.Span(f"Current Altitude: {self.simulator.current_state['altitude']:.1f}m | "),
+                    html.Span(f"Speed: {self.simulator.current_state['speed']:.1f}m/s | "),
+                    html.Span(f"Heading: {self.simulator.heading:.1f}° ({self._heading_to_cardinal(self.simulator.heading)})")
+                ])
+            ])
+            
+            return "updated", status_html
 
         @self.app.callback(
             [Output('flight-path-3d', 'figure'),
-             Output('performance-metrics', 'figure'),
+             Output('telemetry-plot', 'figure'),
              Output('position-map', 'figure')],
             [Input('update-timer', 'n_intervals')]
         )
@@ -130,17 +158,34 @@ class TelemetryDashboard:
             
             return (
                 self._create_3d_flight_path(df),
-                self._create_performance_metrics(df),
+                self._create_telemetry_plot(df),
                 self._create_position_map(df)
             )
     
+    def _heading_to_cardinal(self, heading):
+        """Convert heading in degrees to cardinal direction."""
+        cardinals = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+        idx = round(((heading % 360) / 45)) % 8
+        return cardinals[idx]
+    
     def _create_3d_flight_path(self, df):
         """Create 3D visualization of flight path."""
-        fig = go.Figure(data=[go.Scatter3d(
+        # Calculate heading vectors for visualization
+        heading_len = 0.001  # Length of heading indicator
+        current_pos = df.iloc[-1]
+        heading_rad = np.radians(self.simulator.heading)
+        dx = heading_len * np.sin(heading_rad)
+        dy = heading_len * np.cos(heading_rad)
+        
+        fig = go.Figure()
+        
+        # Add flight path
+        fig.add_trace(go.Scatter3d(
             x=df['longitude'],
             y=df['latitude'],
             z=df['altitude'],
             mode='lines+markers',
+            name='Flight Path',
             marker=dict(
                 size=2,
                 color=df.index,
@@ -150,7 +195,20 @@ class TelemetryDashboard:
                 color='darkblue',
                 width=2
             )
-        )])
+        ))
+        
+        # Add heading indicator
+        fig.add_trace(go.Scatter3d(
+            x=[current_pos['longitude'], current_pos['longitude'] + dx],
+            y=[current_pos['latitude'], current_pos['latitude'] + dy],
+            z=[current_pos['altitude'], current_pos['altitude']],
+            mode='lines',
+            name='Heading',
+            line=dict(
+                color='red',
+                width=4
+            )
+        ))
         
         fig.update_layout(
             title='3D Flight Path',
@@ -165,8 +223,8 @@ class TelemetryDashboard:
         
         return fig
     
-    def _create_performance_metrics(self, df):
-        """Create performance metrics visualization."""
+    def _create_telemetry_plot(self, df):
+        """Create telemetry visualization."""
         fig = make_subplots(specs=[[{"secondary_y": True}]])
         
         fig.add_trace(
@@ -189,32 +247,74 @@ class TelemetryDashboard:
             secondary_y=True
         )
         
+        # Add heading trace
+        fig.add_trace(
+            go.Scatter(
+                x=df['timestamp'],
+                y=[self.simulator.heading] * len(df),
+                name='Heading',
+                line=dict(color='green', dash='dash')
+            ),
+            secondary_y=True
+        )
+        
         fig.update_layout(
-            title='Vehicle Performance',
+            title='Vehicle Telemetry',
             xaxis_title='Time',
             height=400,
             margin=dict(l=10, r=10, t=30, b=10)
         )
         
         fig.update_yaxes(title_text="Altitude (m)", secondary_y=False)
-        fig.update_yaxes(title_text="Speed (m/s)", secondary_y=True)
+        fig.update_yaxes(title_text="Speed (m/s) / Heading (°)", secondary_y=True)
         
         return fig
     
     def _create_position_map(self, df):
         """Create map showing current position and path."""
-        fig = px.scatter_mapbox(
-            df,
-            lat='latitude',
-            lon='longitude',
-            title='Vehicle Position',
-            zoom=13,
-            height=400
-        )
+        # Calculate heading vector for current position
+        current_pos = df.iloc[-1]
+        heading_rad = np.radians(self.simulator.heading)
+        arrow_length = 0.001  # Length of the heading arrow
         
+        # Create the main path trace
+        fig = go.Figure()
+        
+        # Add the flight path
+        fig.add_trace(go.Scattermapbox(
+            lat=df['latitude'],
+            lon=df['longitude'],
+            mode='lines+markers',
+            marker=dict(size=6),
+            line=dict(width=2),
+            name='Flight Path'
+        ))
+        
+        # Add heading indicator arrow
+        fig.add_trace(go.Scattermapbox(
+            lat=[current_pos['latitude'], 
+                 current_pos['latitude'] + arrow_length * np.cos(heading_rad)],
+            lon=[current_pos['longitude'], 
+                 current_pos['longitude'] + arrow_length * np.sin(heading_rad)],
+            mode='lines',
+            line=dict(width=3, color='red'),
+            name='Heading'
+        ))
+        
+        # Update layout
         fig.update_layout(
-            mapbox_style='open-street-map',
-            margin=dict(l=0, r=0, t=30, b=0)
+            mapbox=dict(
+                style='open-street-map',
+                center=dict(
+                    lat=df['latitude'].mean(),
+                    lon=df['longitude'].mean()
+                ),
+                zoom=13
+            ),
+            title='Vehicle Position',
+            height=400,
+            margin=dict(l=0, r=0, t=30, b=0),
+            showlegend=True
         )
         
         return fig
