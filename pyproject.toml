@@ -13,12 +13,11 @@ dependencies = [
     "plotly>=5.3.0",
     "dash>=2.0.0",
     "aiohttp>=3.8.0",
-    "pydantic>=1.9.0"
+    "pydantic>=1.9.0",
+    "dash-bootstrap-components"
 ]
 
-[
-project.optional-dependencies
-]
+[project.optional-dependencies]
 dev = [
     "pytest>=6.0",
     "pytest-cov>=2.0",
@@ -26,17 +25,19 @@ dev = [
     "black>=22.0",
     "isort>=5.0",
     "mypy>=0.940",
-    "pre-commit>=2.17.0",
+    "pre-commit>=2.17.0"
 ]
 docs = [
     "sphinx>=4.0",
     "sphinx-rtd-theme>=1.0",
-    "myst-parser>=0.18.0",
+    "myst-parser>=0.18.0"
 ]
 
-[
-tool.black
-]
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["telemetry_toolkit"]
+
+[tool.black]
 line-length = 88
 target-version = ["py311"]
 include = '\.pyi?$'
@@ -46,9 +47,7 @@ extend-exclude = '''
 ^/docs/
 '''
 
-[
-tool.isort
-]
+[tool.isort]
 profile = "black"
 multi_line_output = 3
 include_trailing_comma = true
@@ -58,9 +57,7 @@ ensure_newline_before_comments = true
 line_length = 88
 skip = ["docs/"]
 
-[
-tool.mypy
-]
+[tool.mypy]
 python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
@@ -74,20 +71,16 @@ warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
 
-[[
-tool.mypy.overrides
-]]
+[[tool.mypy.overrides]]
 module = [
     "dash.*",
     "plotly.*",
     "numpy.*",
-    "pandas.*",
+    "pandas.*"
 ]
 ignore_missing_imports = true
 
-[
-tool.pytest.ini_options
-]
+[tool.pytest.ini_options]
 asyncio_mode = "strict"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
