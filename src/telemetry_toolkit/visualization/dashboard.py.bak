@@ -1,154 +1,187 @@
-import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from dash import Dash, html, dcc
-from dash.dependencies import Input, Output
+from dash import Dash, html, dcc, Input, Output, State, ctx
+from dash.exceptions import PreventUpdate
 from plotly.subplots import make_subplots
+import dash_bootstrap_components as dbc
+import numpy as np
 from .components.control_panel import VehicleControlPanel
-from ..simulator.control import VehicleControlSystem, ControlCommand
+from ..simulator.control import ControlCommand
 
 class TelemetryDashboard:
-    def __init__(self, simulator, update_interval_ms=1000):
-        """
-        Initialize the dashboard
-        """
+    def __init__(self, simulator, control_system, update_interval_ms=1000):
+        """Initialize the dashboard with simulator and control system."""
         self.simulator = simulator
-        from telemetry_toolkit.simulator.control import VehicleControlSystem
-        self.control_system = VehicleControlSystem(simulator)
+        self.control_system = control_system
         self.update_interval = update_interval_ms
         self.app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
         self._setup_layout()
         self._setup_callbacks()
     
     def _setup_layout(self):
-        """
-        - Real-time status indicators
-        - 3D flight path visualization
-        - Performance metrics charts
-        - Position tracking map
-        """
+        """Set up the dashboard layout with controls and visualizations."""
         self.app.layout = html.Div([
-            # Header section
+            # Header
             html.Div([
                 html.H1('AV Telemetry Dashboard',
                         className='text-center mb-4'),
-                html.P('Real-time monitoring of AV telemetry data',
+                html.P('Real-time monitoring and control of AV telemetry data',
                        className='text-center text-muted mb-4')
             ], className='container mt-4'),
             
-            # Main content area
+            # Main content
             html.Div([
-                # First row: Status and 3D visualization
+                # First row: Controls and 3D visualization
                 html.Div([
                     html.Div([
-                        dcc.Graph(id='status-display')
+                        VehicleControlPanel().create_layout()
                     ], className='col-md-4'),
                     html.Div([
-                        dcc.Graph(id='flight-path-3d')
+                        dcc.Graph(id='vehicle-3d-path')
                     ], className='col-md-8')
                 ], className='row mb-4'),
                 
                 # Second row: Performance metrics and map
                 html.Div([
                     html.Div([
-                        dcc.Graph(id='performance-metrics')
+                        dcc.Graph(id='vehicle-metrics'),
                     ], className='col-md-6'),
                     html.Div([
-                        dcc.Graph(id='position-map')
+                        dcc.Graph(id='vehicle-map'),
                     ], className='col-md-6')
-                ], className='row mb-4'),
-            ], className='container-fluid'),
+                ], className='row'),
 
-            # Control panel
-            html.Div([
-                html.H2('Vehicle Controls'),
-                dcc.Graph(id='control-panel')
-            ], className='row mb-4'),
-            
-            # Update timer for real-time updates
-            dcc.Interval(
-                id='update-timer',
-                interval=self.update_interval,
-                n_intervals=0
-            )
+                # Status Display
+                html.Div([
+                    html.Div(id='status-display', className='text-center p-3 bg-light')
+                ], className='row mb-4'),
+                
+                # Hidden div for storing state
+                html.Div(id='control-state', style={'display': 'none'}),
+                
+                # Update interval
+                dcc.Interval(
+                    id='update-timer',
+                    interval=self.update_interval,
+                    n_intervals=0
+                )
+            ], className='container-fluid')
         ])
     
     def _setup_callbacks(self):
+        """Set up all the dashboard callbacks."""
+        
+        @self.app.callback(
+            [Output('control-state', 'children'),
+             Output('status-display', 'children')],
+            [Input('vehicle-control-altitude', 'value'),
+             Input('vehicle-control-speed', 'value'),
+             Input('vehicle-control-heading', 'value'),
+             Input('vehicle-control-takeoff', 'n_clicks'),
+             Input('vehicle-control-land', 'n_clicks'),
+             Input('vehicle-control-emergency', 'n_clicks')],
+            [State('control-state', 'children')]
+        )
+        def handle_control_inputs(altitude, speed, heading, takeoff_clicks, 
+                                land_clicks, emergency_clicks, current_state):
+            """Handle control panel inputs."""
+            if not ctx.triggered:
+                raise PreventUpdate
+                
+            trigger_id = ctx.triggered_id
+            status_message = "Ready"
+            
+            try:
+                if trigger_id == 'vehicle-control-emergency':
+                    self.simulator.set_target_speed(0.0)
+                    self.simulator.set_target_altitude(0.0)
+                    status_message = "EMERGENCY STOP ACTIVATED"
+                    
+                elif trigger_id == 'vehicle-control-takeoff':
+                    self.simulator.set_target_altitude(300.0)
+                    self.simulator.set_target_speed(20.0)
+                    status_message = "Executing takeoff sequence"
+                    
+                elif trigger_id == 'vehicle-control-land':
+                    self.simulator.set_target_speed(5.0)
+                    self.simulator.set_target_altitude(0.0)
+                    status_message = "Executing landing sequence"
+                    
+                else:
+                    # Handle slider updates
+                    if altitude is not None:
+                        self.simulator.set_target_altitude(float(altitude))
+                        status_message = f"Adjusting altitude to {altitude}m"
+                        
+                    if speed is not None:
+                        self.simulator.set_target_speed(float(speed))
+                        status_message = f"Adjusting speed to {speed}m/s"
+                        
+                    if heading is not None:
+                        self.simulator.set_heading(float(heading))
+                        cardinal = self._heading_to_cardinal(heading)
+                        status_message = f"Turning to heading {heading}° ({cardinal})"
+                    
+            except Exception as e:
+                print(f"Error handling control input: {e}")
+                status_message = f"Error: {str(e)}"
+            
+            status_html = html.Div([
+                html.H4("Vehicle Status"),
+                html.P(status_message),
+                html.Div([
+                    html.Span(f"Current Altitude: {self.simulator.current_state['altitude']:.1f}m | "),
+                    html.Span(f"Speed: {self.simulator.current_state['speed']:.1f}m/s | "),
+                    html.Span(f"Heading: {self.simulator.heading:.1f}° ({self._heading_to_cardinal(self.simulator.heading)})")
+                ])
+            ])
+            
+            return "updated", status_html
 
         @self.app.callback(
-            [Output('status-display', 'figure'),
-             Output('flight-path-3d', 'figure'),
-             Output('performance-metrics', 'figure'),
-             Output('position-map', 'figure'),
-             Output('control-status', 'children')]
-            [Input('update-timer', 'n_intervals'),
-             Input('altitude-command', 'value'),
-             Input('speed-command', 'value'),
-             Input('heading-command', 'value')]
+            [Output('vehicle-3d-path', 'figure'),
+             Output('vehicle-metrics', 'figure'),
+             Output('vehicle-map', 'figure')],
+            [Input('update-timer', 'n_intervals')]
         )
-        async def handle_control_command(altitude, speed, heading):
-            from telemetry_toolkit.simulator.control import ControlCommand
-            command = ControlCommand(
-                target_altitude=altitude,
-                target_speed=speed,
-                target_heading=heading
-            )
-            await self.control_system.send_command(command)
-            return f"Command sent successfully"
-        
-        def update_dashboard(_):
+        def update_visualizations(n):
+            """Update all visualization components."""
             if not self.simulator.data_buffer:
-                return [go.Figure()] * 4
+                return {}, {}, {}
             
-            # Convert recent data points to a DataFrame for easier handling
             df = pd.DataFrame([vars(d) for d in self.simulator.data_buffer[-100:]])
             
             return (
-                self._create_status_indicators(df),
                 self._create_3d_flight_path(df),
-                self._create_performance_metrics(df),
+                self._create_telemetry_plot(df),
                 self._create_position_map(df)
             )
     
-    def _create_status_indicators(self, df):
-        """
-        Key status indicators..
-        """
-        latest_data = df.iloc[-1]
-        previous_data = df.iloc[-2] if len(df) > 1 else latest_data
+    def _heading_to_cardinal(self, heading):
+        """Convert heading in degrees to cardinal direction."""
+        cardinals = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+        idx = round(((heading % 360) / 45)) % 8
+        return cardinals[idx]
+    
+    def _create_3d_flight_path(self, df):
+        """Create 3D visualization of flight path."""
+        # Calculate heading vectors for visualization
+        heading_len = 0.001  # Length of heading indicator
+        current_pos = df.iloc[-1]
+        heading_rad = np.radians(self.simulator.heading)
+        dx = heading_len * np.sin(heading_rad)
+        dy = heading_len * np.cos(heading_rad)
         
         fig = go.Figure()
         
-        # Add altitude indicator
-        fig.add_trace(go.Indicator(
-            mode="number+delta",
-            value=latest_data['altitude'],
-            delta={'reference': previous_data['altitude'],
-                   'relative': True,
-                   'position': "top"},
-            title={'text': "Altitude (m)"},
-            domain={'row': 0, 'column': 0}
-        ))
-        
-        fig.update_layout(
-            height=200,
-            margin=dict(l=10, r=10, t=30, b=10),
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)'
-        )
-        
-        return fig
-    
-    def _create_3d_flight_path(self, df):
-        """
-        3D visualization of flight path.
-        """
-        fig = go.Figure(data=[go.Scatter3d(
+        # Add flight path
+        fig.add_trace(go.Scatter3d(
             x=df['longitude'],
             y=df['latitude'],
             z=df['altitude'],
             mode='lines+markers',
+            name='Flight Path',
             marker=dict(
                 size=2,
                 color=df.index,
@@ -158,7 +191,20 @@ class TelemetryDashboard:
                 color='darkblue',
                 width=2
             )
-        )])
+        ))
+        
+        # Add heading indicator
+        fig.add_trace(go.Scatter3d(
+            x=[current_pos['longitude'], current_pos['longitude'] + dx],
+            y=[current_pos['latitude'], current_pos['latitude'] + dy],
+            z=[current_pos['altitude'], current_pos['altitude']],
+            mode='lines',
+            name='Heading',
+            line=dict(
+                color='red',
+                width=4
+            )
+        ))
         
         fig.update_layout(
             title='3D Flight Path',
@@ -173,11 +219,10 @@ class TelemetryDashboard:
         
         return fig
     
-    def _create_performance_metrics(self, df):
-
+    def _create_telemetry_plot(self, df):
+        """Create telemetry visualization."""
         fig = make_subplots(specs=[[{"secondary_y": True}]])
         
-        # Add altitude line
         fig.add_trace(
             go.Scatter(
                 x=df['timestamp'],
@@ -188,7 +233,6 @@ class TelemetryDashboard:
             secondary_y=False
         )
         
-        # Add speed line on secondary axis
         fig.add_trace(
             go.Scatter(
                 x=df['timestamp'],
@@ -199,43 +243,78 @@ class TelemetryDashboard:
             secondary_y=True
         )
         
+        # Add heading trace
+        fig.add_trace(
+            go.Scatter(
+                x=df['timestamp'],
+                y=[self.simulator.heading] * len(df),
+                name='Heading',
+                line=dict(color='green', dash='dash')
+            ),
+            secondary_y=True
+        )
+        
         fig.update_layout(
-            title='Vehicle Performance',
+            title='Vehicle Telemetry',
             xaxis_title='Time',
             height=400,
             margin=dict(l=10, r=10, t=30, b=10)
         )
         
-        # Update axis labels
         fig.update_yaxes(title_text="Altitude (m)", secondary_y=False)
-        fig.update_yaxes(title_text="Speed (m/s)", secondary_y=True)
+        fig.update_yaxes(title_text="Speed (m/s) / Heading (°)", secondary_y=True)
         
         return fig
     
     def _create_position_map(self, df):
-        """
-        Create a map showing current position and path.
-        """
-        fig = px.scatter_mapbox(
-            df,
-            lat='latitude',
-            lon='longitude',
-            title='Vehicle Position',
-            zoom=13,
-            height=400
-        )
+        """Create map showing current position and path."""
+        # Calculate heading vector for current position
+        current_pos = df.iloc[-1]
+        heading_rad = np.radians(self.simulator.heading)
+        arrow_length = 0.001  # Length of the heading arrow
         
+        # Create the main path trace
+        fig = go.Figure()
+        
+        # Add the flight path
+        fig.add_trace(go.Scattermapbox(
+            lat=df['latitude'],
+            lon=df['longitude'],
+            mode='lines+markers',
+            marker=dict(size=6),
+            line=dict(width=2),
+            name='Flight Path'
+        ))
+        
+        # Add heading indicator arrow
+        fig.add_trace(go.Scattermapbox(
+            lat=[current_pos['latitude'], 
+                 current_pos['latitude'] + arrow_length * np.cos(heading_rad)],
+            lon=[current_pos['longitude'], 
+                 current_pos['longitude'] + arrow_length * np.sin(heading_rad)],
+            mode='lines',
+            line=dict(width=3, color='red'),
+            name='Heading'
+        ))
+        
+        # Update layout
         fig.update_layout(
-            mapbox_style='open-street-map',
-            margin=dict(l=0, r=0, t=30, b=0)
+            mapbox=dict(
+                style='open-street-map',
+                center=dict(
+                    lat=df['latitude'].mean(),
+                    lon=df['longitude'].mean()
+                ),
+                zoom=13
+            ),
+            title='Vehicle Position',
+            height=400,
+            margin=dict(l=0, r=0, t=30, b=0),
+            showlegend=True
         )
         
         return fig
     
     def run(self, debug=False, port=8050):
-        """""
-        Args:
-            debug: Enable debug mode for development
-            port: Port number to run the server on
-        """
+        """Run the dashboard server."""
         self.app.run_server(debug=debug, port=port)
