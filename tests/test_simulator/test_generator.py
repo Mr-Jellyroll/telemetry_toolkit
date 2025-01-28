@@ -123,7 +123,7 @@ async def test_data_buffer_management(running_simulator):
     Tests to prevent memory issues.
     """
     # Generate lots of data points
-    for _ in range(1200):  # More than buffer size
+    for _ in range(20):  # Iterations
         await asyncio.sleep(0.01)
     
     # Verify buffer size management

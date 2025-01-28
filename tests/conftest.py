@@ -1,10 +1,11 @@
 import pytest
+import pytest_asyncio
 from telemetry_toolkit.simulator.generator import TelemetrySimulator
 
 @pytest.fixture
 def simulator():
     """
-    Clean sim instance for each test.
+    Clean simulator instance for each test.
     """
     sim = TelemetrySimulator(
         update_interval=0.1,
@@ -16,18 +17,25 @@ def simulator():
     )
     return sim
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def running_simulator(simulator):
     """
-    A sim that's already running.
+    Provides a sim that's already running.
     """
     import asyncio
     
+    # Start the sim
     task = asyncio.create_task(simulator.start_simulation())
+    
+    # Generate some data
     await asyncio.sleep(0.2)
     
-    yield simulator
-    
-    # Cleanup
-    simulator.stop_simulation()
-    await task
+    try:
+        yield simulator
+    finally:
+        # Cleanup
+        simulator.stop_simulation()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass

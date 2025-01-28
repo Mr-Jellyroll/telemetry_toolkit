@@ -9,8 +9,8 @@ class TelemetryData:
     
         timestamp: The exact time when this data point was recorded
         altitude: Current altitude in meters above sea level
-        speed: Current speed in meters per second
-        battery_level: Remaining battery charge as a percentage (0-100)
+        speed: Current speed in m/s
+        battery_level: Remaining battery charge as a % (0-100)
         sensor_readings: Dictionary containing various sensor measurements
     """
     timestamp: datetime
@@ -55,5 +55,7 @@ class TelemetryData:
             'altitude': float(self.altitude),
             'speed': float(self.speed),
             'battery_level': float(self.battery_level),
+            'latitude': float(self.latitude),
+            'longitude': float(self.longitude),
             'sensor_readings': dict(self.sensor_readings)
         }
