@@ -1,11 +1,13 @@
 import asyncio
+import threading
 import webbrowser
+import time
 from telemetry_toolkit.simulator.generator import TelemetrySimulator
 from telemetry_toolkit.visualization.dashboard import TelemetryDashboard
 from telemetry_toolkit.simulator.control import VehicleControlSystem
 
 def main():
-
+    # Create simulator with San Diego coordinates
     simulator = TelemetrySimulator(
         update_interval=0.5,
         noise_factor=0.05,
@@ -15,32 +17,43 @@ def main():
         initial_position=(32.7157, -117.1611)  # San Diego coordinates
     )
     
-    dashboard = TelemetryDashboard(simulator)
+    # Create control system
     control_system = VehicleControlSystem(simulator)
     
-    # Start simulator in a separate thread
-    import threading
+    # Create dashboard with both simulator and control system
+    dashboard = TelemetryDashboard(
+        simulator=simulator,
+        control_system=control_system
+    )
     
+    # Create and initialize event loop for async operations
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    # Function to run simulator in the event loop
     def run_simulator():
-        asyncio.run(simulator.start_simulation())
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(simulator.start_simulation())
     
-    def run_control_system():
-        asyncio.run(control_system.start())
+    # Function to run control system in the event loop
+    def run_control():
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(control_system.start())
     
-    # Create and start threads
+    # Create and start simulator thread
     simulator_thread = threading.Thread(target=run_simulator)
-    control_thread = threading.Thread(target=run_control_system)
-    
     simulator_thread.daemon = True
-    control_thread.daemon = True
-    
     simulator_thread.start()
+    
+    # Create and start control system thread
+    control_thread = threading.Thread(target=run_control)
+    control_thread.daemon = True
     control_thread.start()
     
-    import time
+    # Wait for threads to initialize
     time.sleep(2)
     
-    # Open the browser
+    # Open browser to display dashboard
     webbrowser.open('http://127.0.0.1:8050/')
     
     print("\nDashboard is now running!")
