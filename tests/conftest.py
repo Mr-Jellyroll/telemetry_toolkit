@@ -1,8 +1,17 @@
 import pytest
 import pytest_asyncio
 import asyncio
+import logging
 from telemetry_toolkit.simulator.generator import TelemetrySimulator
 from telemetry_toolkit.simulator.control import VehicleControlSystem
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+logger = logging.getLogger(__name__)
 
 @pytest.fixture
 def simulator():
@@ -26,15 +35,23 @@ async def running_simulator(simulator):
     try:
         yield simulator
     finally:
+        logger.debug("Stopping simulator")
         simulator.stop_simulation()
-        await asyncio.sleep(0.1)  # Allow cleanup time
-        await task
+        try:
+            await asyncio.wait_for(task, timeout=1.0)
+        except asyncio.TimeoutError:
+            logger.warning("Simulator task timeout - forcing cancellation")
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 @pytest_asyncio.fixture
 async def control_system(simulator):
 
     cs = VehicleControlSystem(simulator)
-    return cs
+    yield cs
 
 @pytest_asyncio.fixture
 async def running_control_system(control_system):
@@ -45,20 +62,36 @@ async def running_control_system(control_system):
     try:
         yield control_system
     finally:
+        logger.debug("Stopping control system")
         control_system.running = False
-        await asyncio.sleep(0.1)  # Allow cleanup time
-        await task
+        try:
+            await asyncio.wait_for(task, timeout=1.0)
+        except asyncio.TimeoutError:
+            logger.warning("Control system task timeout - forcing cancellation")
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 @pytest.fixture(autouse=True)
 async def cleanup_tasks():
-
+    """Clean up any pending tasks after each test."""
     yield
-    # Clean up any pending tasks
-    tasks = [t for t in asyncio.all_tasks() 
-             if t is not asyncio.current_task()]
-    for task in tasks:
-        task.cancel()
+    
+    # Get all tasks except the current one
+    pending = [t for t in asyncio.all_tasks() 
+              if not t.done() and t is not asyncio.current_task()]
+    
+    if pending:
+        logger.debug(f"Cleaning up {len(pending)} pending tasks")
+        # Cancel all pending tasks
+        for task in pending:
+            task.cancel()
+        
+        # Wait for all tasks to complete with timeout
         try:
-            await task
-        except asyncio.CancelledError:
-            pass
+            await asyncio.wait_for(asyncio.gather(*pending, return_exceptions=True), 
+                                 timeout=1.0)
+        except asyncio.TimeoutError:
+            logger.warning("Task cleanup timeout - some tasks may remain")
