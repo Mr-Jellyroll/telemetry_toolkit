@@ -1,11 +1,13 @@
 import asyncio
 from telemetry_toolkit.simulator.generator import TelemetrySimulator
 from telemetry_toolkit.visualization.dashboard import TelemetryDashboard
+from telemetry_toolkit.simulator.control import VehicleControlSystem
 import webbrowser
 import time
+import threading
 
 def main():
-    # Create our simulator starting in downtown San Diego
+    # Create our simulator starting in downtown SD
     simulator = TelemetrySimulator(
         update_interval=0.5,
         noise_factor=0.05,
@@ -20,13 +22,29 @@ def main():
     
     # Run the simulation in a separate thread
     import threading
+
+    def run_simulator():
+        asyncio.run(simulator.start_simulation())
+    
+    def run_control_system():
+        asyncio.run(dashboard.control_system.start())
+    
+    simulator_thread = threading.Thread(target=run_simulator)
+    control_thread = threading.Thread(target=run_control_system)
+    
+    simulator_thread.daemon = True
+    control_thread.daemon = True
+    
+    simulator_thread.start()
+    control_thread.start()
+    
+    # Start the dashboard
+    dashboard.run(debug=False, port=8050)
     
     async def flight_pattern():
-        """
-        
-        """
+
         await asyncio.sleep(2)  # Wait for systems to initialize
-        
+
         print("Taking off from downtown San Diego...")
         simulator.set_target_altitude(300.0) 
         simulator.set_target_speed(20.0)

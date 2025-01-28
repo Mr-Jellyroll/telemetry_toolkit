@@ -2,6 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="telemetry_toolkit",
+    version="0.2.0",
     description="A toolkit for real-time telemetry visualization and analysis",
     package_dir={"": "src"},
     packages=find_packages(where="src"),
@@ -30,4 +31,11 @@ setup(
             "myst-parser>=0.18.0",
         ],
     },
+    package_data={
+        "telemetry_toolkit": [
+            "visualization/components/*.jsx",
+            "visualization/static/*",
+        ]
+    },
+    include_package_data=True,
 )

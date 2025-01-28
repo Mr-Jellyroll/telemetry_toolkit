@@ -1,10 +1,12 @@
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from dash import Dash, html, dcc
 from dash.dependencies import Input, Output
 from plotly.subplots import make_subplots
-import numpy as np
+from .components.control_panel import VehicleControlPanel
+from ..simulator.control import VehicleControlSystem, ControlCommand
 
 class TelemetryDashboard:
 
@@ -13,6 +15,8 @@ class TelemetryDashboard:
         Initialize the dashboard
         """
         self.simulator = simulator
+        from telemetry_toolkit.simulator.control import VehicleControlSystem
+        self.control_system = VehicleControlSystem(simulator)
         self.update_interval = update_interval_ms
         self.app = Dash(__name__)
         self._setup_layout()
@@ -56,6 +60,12 @@ class TelemetryDashboard:
                     ], className='col-md-6')
                 ], className='row mb-4'),
             ], className='container-fluid'),
+
+            # Control panel
+            html.Div([
+                html.H2('Vehicle Controls'),
+                dcc.Graph(id='control-panel')
+            ], className='row mb-4'),
             
             # Update timer for real-time updates
             dcc.Interval(
@@ -71,9 +81,23 @@ class TelemetryDashboard:
             [Output('status-display', 'figure'),
              Output('flight-path-3d', 'figure'),
              Output('performance-metrics', 'figure'),
-             Output('position-map', 'figure')],
-            [Input('update-timer', 'n_intervals')]
+             Output('position-map', 'figure'),
+             Output('control-status', 'children')]
+            [Input('update-timer', 'n_intervals'),
+             Input('altitude-command', 'value'),
+             Input('speed-command', 'value'),
+             Input('heading-command', 'value')]
         )
+        async def handle_control_command(altitude, speed, heading):
+            from telemetry_toolkit.simulator.control import ControlCommand
+            command = ControlCommand(
+                target_altitude=altitude,
+                target_speed=speed,
+                target_heading=heading
+            )
+            await self.control_system.send_command(command)
+            return f"Command sent successfully"
+        
         def update_dashboard(_):
             if not self.simulator.data_buffer:
                 return [go.Figure()] * 4
