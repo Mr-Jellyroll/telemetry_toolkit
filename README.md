@@ -17,7 +17,7 @@ A Python toolkit for real-time telemetry visualization. Dashboard shows simulate
 
 ## Installation
 
-1. Clone the repo or you can install the package directly from PyPI:
+1. Clone the repo and you can install the package directly from PyPI:
 ```bash
 pip install telemetry_toolkit
 ```
